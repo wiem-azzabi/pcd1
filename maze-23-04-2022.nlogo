@@ -38,7 +38,7 @@ maze-runners-own [prev-node current-node next-node next-path visited-nodes visit
     outputs      ; List with the binary output in the training
     output-id   ; list of "who" of each output node
     epoch-error  ; error in every epoch during training
-    genotype
+
   linput ;list of weights(input-hidden) after training (kenet li w lezem tkoun list of list)
   lhidden ;list of weights(hidden-output) after training
   lbias ;list of weights(biais) after training
@@ -58,6 +58,11 @@ maze-runners-own [prev-node current-node next-node next-path visited-nodes visit
   oin
   oout
   steps
+
+  genotype
+  fitness
+  dist-finale ;distance finale %exit
+  nbre-visited-nodes ;nbre visited-nodes finale
 ]
 
 ;; defining breeds variable
@@ -891,7 +896,7 @@ to navigate
           let yexit  [ycor] of nodes with [reward = 100]
           set xexit item 0 xexit
           set yexit item 0 yexit
-          let dist sqrt( (xn - xexit) * (xn - xexit)  + (yn - yexit) * (yn - yexit) )
+          set dist-finale sqrt( (xn - xexit) * (xn - xexit)  + (yn - yexit) * (yn - yexit) )
           let dirp 0
           let dir -1
             ;ask maze-runners[
@@ -1171,15 +1176,11 @@ to setup-links
   let si 0
   let hidden-links2 [] ;liste de listes des liens
   repeat Neurons-Hidden-Layer [set hidden-links2 lput sublist hidden-links (si * 4) (si * 4 + 4) hidden-links2 set si si + 1 ]
-
   let gh 0
   let lh2[]
   (repeat length hidden-links [ set lh2 lput [weight] of item gh hidden-links lh2 set gh (gh + 1)]);;lh2 =list of weights (simple)
   let si2 0
   repeat Neurons-Hidden-Layer [set lhidden lput sublist lh2 (si2 * 4) (si2 * 4 + 4) lhidden set si2 si2 + 1 ]
-
-
-
   ;;set li
   set si 0
   let input-links2 [] ;liste de listes des liens
@@ -1191,7 +1192,6 @@ to setup-links
   (repeat length input-links [ set li2 lput [weight] of item gh input-links li2 set gh (gh + 1)]); li2 list simple =weights des liens input-hidden
   set si2 0
   repeat 8 [set linput lput sublist li2 (si2 * Neurons-Hidden-Layer) (si2 * Neurons-Hidden-Layer + Neurons-Hidden-Layer) linput set si2 si2 + 1 ]
-
   ;;set lb
   set si 0
   let bias-links2 [] ;liste de listes des liens
@@ -1559,7 +1559,133 @@ end
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; fin code du reseau de neuronnes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;line to keep code in 80 columns;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;code genetique;;;;;;;;;;;;;;;;;;;;;;;;
+to go
+  if [fitness] of min-one-of maze-runners [fitness] = 0  ;fitness = nbre de 1 dans la liste
+    [ stop ]
+
+
+  create-next-generation
+
+  ;tick
+end
+
+to create-next-generation
+  let old-generation maze-runners with [true]     ;;strategie choix bin 3 bch nkhaliwha
+  let crossover-count  (floor (population * crossover-rate / 100 / 2))
+  ;navigate
+  repeat crossover-count
+  [
+    let parent1 min-one-of (n-of 3 old-generation) [fitness]
+    let parent2 min-one-of (n-of 3 old-generation) [fitness]
+    let child-genotype crossover ([genotype] of parent1) ([genotype] of parent2)
+
+     ask one-of nodes with [label = "entrance"]
+   [let present-node self
+    ask patch-here
+    [
+      sprout-maze-runners 1
+      [ set size 10
+        set color blue
+        set current-node present-node
+        set visited-nodes []
+        set visited-nodes2 []
+        set visited-hubs []
+        set I-found-exit? false
+        set genotype item 0 child-genotype
+      ]
+        sprout-maze-runners 1
+      [ set size 10
+        set color pink
+        set current-node present-node
+        set visited-nodes []
+        set visited-nodes2 []
+        set visited-hubs []
+        set I-found-exit? false
+        set genotype item 1 child-genotype
+      ]
+
+  ]]]
+  repeat (population - crossover-count * 2)
+  [ask min-one-of (n-of 3 old-generation) [fitness]
+      [ set color green hatch 1 ]]
+  ask old-generation [ die ]
+  ask maze-runners [ mutate ] ; there's a chance of mutations occurring
+  navigate
+  ask maze-runners[calculate-fitness ]
+end
+
+to-report crossover [genotype1 genotype2]
+  let g1 reduce sentence reduce sentence genotype1
+  let g2 reduce sentence reduce sentence genotype2
+  let split-point 1 + random (length g1 - 1)
+
+
+  set genotype1 convert g1
+  set genotype2 convert g2
+
+ let lchild list (sentence (sublist g1 0 split-point)
+                        (sublist g2 split-point length g2))
+              (sentence (sublist g2 0 split-point)
+                        (sublist g1 split-point length g1))
+  let genotype-child convert lchild ;convertir a partir de la liste lchild
+  report genotype-child
+end
+
+
+
+
+to-report convert [g]
+
+  let input-genotype sublist g 0 (8 * neurons-hidden-layer) ;list of input-hidden links (liste simple )
+  let hidden-genotype sublist g (8 * neurons-hidden-layer) (12 * neurons-hidden-layer) ;list of hidden-output weights (liste simple)
+  let bias-genotype sublist  g (12 * neurons-hidden-layer) (length g)
+
+  let input-genotype2 []
+  let hidden-genotype2 []
+  let bias-genotype2 []
+
+  let si2 0
+  repeat 8 [set input-genotype2 lput sublist input-genotype (si2 * Neurons-Hidden-Layer) (si2 * Neurons-Hidden-Layer + Neurons-Hidden-Layer) input-genotype2 set si2 si2 + 1 ] ;liste de liste
+
+  set si2 0
+  repeat Neurons-Hidden-Layer [set hidden-genotype2 lput sublist hidden-genotype (si2 * 4) (si2 * 4 + 4) hidden-genotype2 set si2 si2 + 1 ]
+
+
+  set bias-genotype2 lput sublist bias-genotype 0 Neurons-Hidden-Layer bias-genotype2
+  set bias-genotype2 lput sublist bias-genotype Neurons-Hidden-Layer length bias-genotype bias-genotype2
+
+  let gene lput input-genotype2 genotype
+  set gene lput hidden-genotype2 genotype
+  set gene lput bias-genotype genotype
+ report gene
+end
+
+to calculate-fitness       ;; turtle procedure
+  ;; min distance %exit puis longeur visitednodes
+
+          let xn xcor ;;x du maze runner
+          let yn ycor ;; y du maze runner
+          let xexit [xcor] of nodes with [reward = 100]
+          let yexit  [ycor] of nodes with [reward = 100]
+          set xexit item 0 xexit
+          set yexit item 0 yexit
+          set dist-finale sqrt( (xn - xexit) * (xn - xexit)  + (yn - yexit) * (yn - yexit) ) ;distance % exit
+          set nbre-visited-nodes length visited-nodes2
+          set fitness dist-finale
+
+end
+
+to mutate   ;; turtle procedure
+  let g reduce sentence reduce sentence genotype
+  set g map [ b ->
+    ifelse-value random-float 100.0 < mutation-rate
+      [ b * 0.01 ]  ;;b <= b * epsilon
+      [ b ]
+  ] g
+  set genotype convert g
+end
+
 @#$#@#$#@
 GRAPHICS-WINDOW
 225
@@ -1956,6 +2082,65 @@ population
 1
 NIL
 HORIZONTAL
+
+SLIDER
+990
+428
+1162
+461
+crossover-rate
+crossover-rate
+0
+100
+50.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+992
+478
+1164
+511
+mutation-rate
+mutation-rate
+0
+2
+1.6
+0.1
+1
+NIL
+HORIZONTAL
+
+SWITCH
+1016
+536
+1150
+569
+plot-diversity?
+plot-diversity?
+0
+1
+-1000
+
+PLOT
+744
+634
+944
+784
+Diversity Plot
+gen #
+diversity
+0.0
+20.0
+0.0
+1.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "if plot-diversity? [ plot diversity ]"
 
 @#$#@#$#@
 ## WHAT IS IT?
