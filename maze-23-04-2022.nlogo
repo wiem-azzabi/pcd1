@@ -12,6 +12,7 @@ globals
   mean-epoch-error
   total-epoch-error
   episode
+  num-generation
   ;;;;;globals of neural network
    data-list    ; List of pairs [Input Output] to train the network
     ;inputs       ; List with the binary inputs in the training
@@ -95,6 +96,7 @@ network-links-own [weight]
 ;; setup button
 to quit
   clear-all
+  reset-ticks
 end
 to setup
   clear-all
@@ -104,9 +106,7 @@ to setup
   set episode 1
   build-maze
   set-entrance-exit
-
   setup-maze-runners ;;contient setup reseau et train reseau
-
 
     ask nodes with [label = "exit"][set reward 100 set plabel reward]
     ask nodes with [maze-exit = False and exit? = True  ][set reward -20 set plabel reward set color blue]
@@ -489,6 +489,7 @@ end
 
 ;; setup maze runners
 to setup-maze-runners
+  set linki 0
   ask one-of nodes with [label = "entrance"]
   [ let present-node self
     ask patch-here
@@ -500,6 +501,7 @@ to setup-maze-runners
         set visited-nodes2 []
         set visited-hubs []
         set I-found-exit? false
+
         setup-Reseau
 
         ;set heading 0
@@ -862,20 +864,36 @@ to navigate
   let xx [pxcor] of patches with [pentrance = "entrance"]
   let yy  [pycor] of patches with [pentrance = "entrance"]
   ;show(sort maze-runners)
-  ask maze-runners [
+;ask maze-runners [
     show(sort maze-runners)
     ;while [episode <= num-episodes]
   ;[
+
     ;;change link weights a partir du genotype
-  let li-flat reduce sentence linput
-  let lh-flat reduce sentence lhidden
+  let lif linput
+  let lhf lhidden
+  let li-flat reduce sentence lif
+  let lh-flat reduce sentence lhf
   connect2 sort mr-input-neurons sort mr-hidden-neurons li-flat
   connect2 sort mr-hidden-neurons sort mr-output-neurons  lh-flat
   connect2 sort mr-bias-neurons   sort mr-hidden-neurons  item 0 lbias
   connect2 sort mr-bias-neurons sort mr-output-neurons  item 1 lbias
+  show("affiche;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;")
+   (foreach mr-bias-neurons [ n1 ->
+    (foreach mr-output-neurons [ n2 -> ask network-link [who] of n1 [who] of n2 [ show weight  ]
+     ] )
+    ]
+  )
+  ;show(linput) show(length linput)
+  ;show(lhidden) show(length lhidden)
+  show(lbias) show(length lbias)
+  set lif []
+  set lhf []
+  set li-flat []
+  set lh-flat []
     set steps 0
     ask links  [set color black set thickness 0 ]
-    ;ask maze-runners [setxy  item 0 xx item 0 yy ]
+
     setxy  item 0 xx item 0 yy
     set visited-nodes2 []
     pen-down
@@ -922,7 +940,7 @@ to navigate
             ;;;;active-inputs
             (foreach (mr-input-neurons) input [ [n x] -> ask n [set activation x]])
             ;;;;result
-            Forward-Propagation ;[genotype] ;;a partir du génotype
+            Forward-Propagation
 
             ;;; inspect activations of output +  dégager dir a partir de index-direction :
 
@@ -948,11 +966,12 @@ to navigate
 show("visited") show(visited-nodes2)
   pen-erase
     ;]while num-ep
- plot-pen-up]
-  ;;nchouf enehou maze runner aandou visited nodes = max
+ plot-pen-up
+  ;];ask maze-runners
 
 
-tick
+
+;tick
 ;update-plots
 end
 
@@ -1082,6 +1101,11 @@ to setup-Reseau
   set linput []
   set lhidden []
   set lbias []
+  set input-links []
+  set hidden-links []
+  set bias-links []
+  set mr-network-links []
+
   setup-links
     ;;show agent show links
     ;show(who)
@@ -1109,6 +1133,9 @@ to setup-Reseau
   ;]
   ;reset-ticks
   train
+  set input-links []
+  set hidden-links []
+  set bias-links []
 end
 
 ; Auxiliary Procedure to setup neurons
@@ -1168,14 +1195,20 @@ to setup-links
   connect mr-bias-neurons   mr-hidden-neurons
   connect mr-bias-neurons mr-output-neurons
 
-  set input-links sublist sort network-links 0 (8 * neurons-hidden-layer) ;list of input links (liste simple )
-  set hidden-links sublist sort network-links (8 * neurons-hidden-layer) (12 * neurons-hidden-layer) ;list of hidden links vers output (liste simple)
-  set bias-links sublist sort network-links (12 * neurons-hidden-layer) (length sort network-links)
+  ;network-links
+  set mr-network-links sublist sort network-links  ( linki * 82 ) ((linki + 1 ) * 82)
+  set linki linki + 1
+
+  set input-links sublist sort mr-network-links 0 (8 * neurons-hidden-layer) ;list of input links (liste simple )
+  set hidden-links sublist sort mr-network-links (8 * neurons-hidden-layer) (12 * neurons-hidden-layer) ;list of hidden links vers output (liste simple)
+  set bias-links sublist sort mr-network-links (12 * neurons-hidden-layer) (length sort mr-network-links)
 
   ;;set lhidden (liste de listes)
   let si 0
   let hidden-links2 [] ;liste de listes des liens
   repeat Neurons-Hidden-Layer [set hidden-links2 lput sublist hidden-links (si * 4) (si * 4 + 4) hidden-links2 set si si + 1 ]
+   show("hidden-output links")
+  show(hidden-links2)
   let gh 0
   let lh2[]
   (repeat length hidden-links [ set lh2 lput [weight] of item gh hidden-links lh2 set gh (gh + 1)]);;lh2 =list of weights (simple)
@@ -1199,14 +1232,17 @@ to setup-links
   set bias-links2 lput sublist bias-links Neurons-Hidden-Layer length bias-links bias-links2
   show("bias-(hidden / output) links")
   show(bias-links2)
-  set gh 0
+  let ghh 0
   let lb2 []
-  (repeat length bias-links [ set lb2 lput [weight] of item gh bias-links lb2 set gh (gh + 1)]); li2 list simple =weights des liens input-hidden
-  set si2 0
+
+  (repeat length bias-links [ set lb2 lput [weight] of item ghh bias-links lb2 set ghh (ghh + 1)]); li2 list simple =weights des liens input-hidden
+  show("lb2") show(lb2)
   set lbias lput sublist lb2 0 Neurons-Hidden-Layer lbias
   set lbias lput sublist lb2 Neurons-Hidden-Layer length bias-links lbias
   show("lb")
   show(lbias) ;liste de  list des weights input-hidden
+  set lb2 []
+
 end
 
 
@@ -1216,7 +1252,7 @@ to connect [neurons1 neurons2]
   ;ask neurons1 [create-network-links-to neurons2 [  set weight random-float 0.2 - 0.1 hide-link]] ;kenet create-links-to
 show("neurons1 connect ")show(neurons1)
   (foreach neurons1 [ n1 -> show("neuron 1 connect") show(n1)
-  (foreach neurons2 [ n2 -> ask n1 [ create-network-link-to n2 [  set weight random-normal 0.2  0.1 hide-link  ]
+    (foreach neurons2 [ n2 -> ask n1 [ create-network-link-to n2 [  set weight random-normal 0.2  0.1 hide-link ]
       ;show my-links
     ] ] )
     ]
@@ -1234,24 +1270,27 @@ end
 
 ; Forward Propagation of the signal along the network
 to Forward-Propagation
-  ;;procedure de changment des weights a partir du genotype
+
 
   (foreach mr-hidden-neurons [n -> ask n [if not dropped?  [set activation compute-activation] ]]) ;;layer index
   ;(foreach mr-output-neurons [n -> ask n [set activation compute-activation ]])
+  set oout []
+  ;set oin []
   (foreach mr-output-neurons [n ->
     set oin []
-    ;(foreach sort(output-neurons) [a -> ask a [set oin lput sum [ [activation] of end1 * weight] of my-in-links  oin]]) ;oin = liste des Z de chaque output output neuron
-    (foreach sort(output-neurons) [a -> set oin lput sum [ [activation] of end1 * weight] of [my-in-links] of a  oin ]) ;oin = liste des Z de chaque output output neuron
+
+    (foreach sort(mr-output-neurons) [a -> set oin lput sum [ [activation] of end1 * weight] of [my-in-links] of a  oin ]) ;oin = liste des Z de chaque output output neuron ;;avant le27 kenet sort (output-neurons)
     let oin2 []
     (foreach oin [x -> carefully [ set oin2 lput (e ^ x) oin2][set oin2 lput (2 ^ 31 - 1) oin2 ]])
     let t sum oin2
-    set oout []
+
     ;;;;;;
     set oin lput sum [ [activation] of end1 * weight] of [my-in-links] of n  oin ;liste des z de tous les output neurons ( somme (activation of hidden prec * weights) y compris bias)
     set oout lput softmax t sum [ [activation] of end1 * weight] of [my-in-links] of n oout
     ;;;;;;
     ask n [set activation compute-activation2 t  ]])
 end
+
 to-report compute-activation2 [t]
   ;set oin lput sum [ [activation] of end1 * weight] of my-in-links  oin ;liste des z de tous les output neurons ( somme (activation of hidden prec * weights) y compris bias)
   ;set oout lput softmax t sum [ [activation] of end1 * weight] of my-in-links oout
@@ -1405,8 +1444,8 @@ to Back-propagation2
 
   ;set epoch-error epoch-error / 2
 
-show("sorted links")
-show sort links
+;show("sorted links")
+;show sort links
 
 end
 
@@ -1432,7 +1471,7 @@ end
 to train
   set total-epoch-error 0
   set mean-epoch-error 0
-  set linki 0
+
   ;ask maze-runners [
 
   set mr-network-links []
@@ -1449,7 +1488,7 @@ to train
     ; Forward Propagation of the signal
     Forward-Propagation
 
-      ;;;;;;;;;;;new ;;;;;;;;;;;;;;
+      ;;;;;;;;;;; new ;;;;;;;;;;;;;;
   set lhidden []
   let si 0
   let hidden2-links []
@@ -1467,23 +1506,13 @@ to train
     Back-propagation2
       (foreach mr-hidden-neurons [n -> ask n [set dropped? false]])
     set i i + 1]
-  ;]
 
-  ;;genotype final ;;
-
-  ;ask turtles [
-   ; if (breed = input-neurons ) [set linput lput [weight] of my-links  linput]
-   ; if (breed = hidden-neurons) [set lhidden lput [weight] of my-links lhidden ]
-   ; if (breed = bias-neurons) [set lbias lput [weight] of my-links lbias]
-  ;]
-  ;network-links
-
+   ;network-links
   ;set mr-network-links sublist sort (network-links)  (linki * 82) ((linki + 1 ) * 82)
-   ;set linki linki + 1
-  ;set liste sublist sort(hidden-neurons) (Neurons-Hidden-Layer * mi) (Neurons-Hidden-Layer * (mi + 1))
+  ;set linki linki + 1
 
-  ;set genotype mr-network-links
   create-gene
+
 
 
   set total-epoch-error total-epoch-error + epoch-error
@@ -1561,13 +1590,16 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;code genetique;;;;;;;;;;;;;;;;;;;;;;;;
 to go
-  if [fitness] of min-one-of maze-runners [fitness] = 0  ;fitness = nbre de 1 dans la liste
-    [ stop ]
-
+  show("debut gooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo")
+  ;if [fitness] of min-one-of maze-runners [fitness] = 0  ;fitness = nbre de 1 dans la liste
+   ; [ stop ]
 
   create-next-generation
 
-  ;tick
+  show("fin gooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo")
+end
+to nav
+  ask maze-runners [navigate]
 end
 
 to create-next-generation
@@ -1575,12 +1607,15 @@ to create-next-generation
   let crossover-count  (floor (population * crossover-rate / 100 / 2))
   ;navigate
   repeat crossover-count
-  [
+  [ let child-genotype []
     let parent1 min-one-of (n-of 3 old-generation) [fitness]
     let parent2 min-one-of (n-of 3 old-generation) [fitness]
-    let child-genotype crossover ([genotype] of parent1) ([genotype] of parent2)
 
-     ask one-of nodes with [label = "entrance"]
+    show("parent1")show([genotype] of parent1)show("parent2") show( [genotype] of parent2)
+
+    set child-genotype crossover ([genotype] of parent1) ([genotype] of parent2)
+
+    ask one-of nodes with [label = "entrance"]
    [let present-node self
     ask patch-here
     [
@@ -1592,7 +1627,19 @@ to create-next-generation
         set visited-nodes2 []
         set visited-hubs []
         set I-found-exit? false
+        set genotype []
         set genotype item 0 child-genotype
+
+          setup-neurons
+  connect mr-input-neurons mr-hidden-neurons
+  connect mr-hidden-neurons mr-output-neurons
+  connect mr-bias-neurons   mr-hidden-neurons
+  connect mr-bias-neurons mr-output-neurons
+
+         set linput item 0 genotype
+         set lhidden item 1 genotype
+         set lbias item 2 genotype
+
       ]
         sprout-maze-runners 1
       [ set size 10
@@ -1602,44 +1649,77 @@ to create-next-generation
         set visited-nodes2 []
         set visited-hubs []
         set I-found-exit? false
+        set genotype []
         set genotype item 1 child-genotype
-      ]
 
-  ]]]
+          setup-neurons
+  connect mr-input-neurons mr-hidden-neurons
+  connect mr-hidden-neurons mr-output-neurons
+  connect mr-bias-neurons   mr-hidden-neurons
+  connect mr-bias-neurons mr-output-neurons
+
+         set linput item 0 genotype
+         set lhidden item 1 genotype
+         set lbias item 2 genotype
+        ]
+  ]]
+  ]
   repeat (population - crossover-count * 2)
   [ask min-one-of (n-of 3 old-generation) [fitness]
       [ set color green hatch 1 ]]
-  ask old-generation [ die ]
-  ask maze-runners [ mutate ] ; there's a chance of mutations occurring
-  navigate
-  ask maze-runners[calculate-fitness ]
+  show("before dying")
+  show([who] of old-generation)
+
+  ask old-generation [ die ]  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;this was deleted by wiem
+
+
+
 end
 
 to-report crossover [genotype1 genotype2]
-  let g1 reduce sentence reduce sentence genotype1
-  let g2 reduce sentence reduce sentence genotype2
+  let genotype-child1 []
+  let genotype-child2 []
+  let gen1 genotype1
+  let gen2 genotype2
+  show("genotype1 avant tahawol ") show(genotype1)
+  let g1 reduce sentence reduce sentence reduce sentence reduce sentence gen1
+  let g2 reduce sentence reduce sentence reduce sentence reduce sentence gen2
+  show("genotype1 ba3d tahawol ") show(g1)
+
+  show("length g1 == genotype1 flattened") show(g1) show(length g1)
+  show("length g2 == genotype2 flattened") show(g2) show(length g2)
+
   let split-point 1 + random (length g1 - 1)
-
-
-  set genotype1 convert g1
-  set genotype2 convert g2
-
+show("this is a split point")show(split-point)
  let lchild list (sentence (sublist g1 0 split-point)
                         (sublist g2 split-point length g2))
               (sentence (sublist g2 0 split-point)
                         (sublist g1 split-point length g1))
-  let genotype-child convert lchild ;convertir a partir de la liste lchild
-  report genotype-child
+  show("lchild") show(length lchild) show(lchild)
+
+   set genotype-child1 convert item 0 lchild
+   set genotype-child2 convert item 1 lchild
+
+  set g1 []
+  set g2 []
+  set lchild []
+  set gen2 []
+  set gen1 []
+  set split-point 0
+   report list genotype-child1 genotype-child2
 end
 
 
 
 
-to-report convert [g]
+to-report convert [g] ; de genotype g (liste) --> genotype liste triple retourne le format triple du gene)
 
-  let input-genotype sublist g 0 (8 * neurons-hidden-layer) ;list of input-hidden links (liste simple )
-  let hidden-genotype sublist g (8 * neurons-hidden-layer) (12 * neurons-hidden-layer) ;list of hidden-output weights (liste simple)
-  let bias-genotype sublist  g (12 * neurons-hidden-layer) (length g)
+  let input-genotype []
+  let hidden-genotype []
+  let bias-genotype []
+  set input-genotype sublist g 0 (8 * neurons-hidden-layer) ;list of input-hidden links (liste simple )
+  set hidden-genotype sublist g (8 * neurons-hidden-layer) (12 * neurons-hidden-layer) ;list of hidden-output weights (liste simple)
+  set bias-genotype sublist  g (12 * neurons-hidden-layer) (length g)
 
   let input-genotype2 []
   let hidden-genotype2 []
@@ -1655,9 +1735,10 @@ to-report convert [g]
   set bias-genotype2 lput sublist bias-genotype 0 Neurons-Hidden-Layer bias-genotype2
   set bias-genotype2 lput sublist bias-genotype Neurons-Hidden-Layer length bias-genotype bias-genotype2
 
-  let gene lput input-genotype2 genotype
-  set gene lput hidden-genotype2 genotype
-  set gene lput bias-genotype genotype
+  let gene []
+  set gene lput input-genotype2 gene
+  set gene lput hidden-genotype2 gene
+  set gene lput bias-genotype2 gene
  report gene
 end
 
@@ -1686,6 +1767,68 @@ to mutate   ;; turtle procedure
   set genotype convert g
 end
 
+to start-genetique
+  clear-all
+  setup
+  set num-generation 0
+  repeat number-of-generations[
+  ask maze-runners [go]
+  ask maze-runners [ show("generation") show(genotype) ]
+  ask maze-runners [
+  mutate
+  navigate
+  calculate-fitness ]
+  set num-generation num-generation + 1
+  ]
+
+  tick
+end
+
+; ===== Diversity Measures
+
+;; Our diversity measure is the mean of all-pairs Hamming distances between
+;; the genomes in the population.
+to-report diversity
+  let distances []
+  ask maze-runners [
+    let bits1 genotype
+    ask maze-runners with [self > myself] [ let bits2 genotype
+      set distances fput (hamming-distance bits2 bits1) distances
+    ]
+  ]
+  ; The following  formula calculates how much 'disagreement' between genomes
+  ; there could possibly be, for the current population size.
+  ; This formula may not be immediately obvious, so here's a sketch of where
+  ; it comes from.  Imagine a population of N turtles, where N is even, and each
+  ; turtle has  only a single bit (0 or 1).  The most diverse this population
+  ; can be is if half the turtles have 0 and half have 1 (you can prove this
+  ; using calculus!). In this case, there are (N / 2) * (N / 2) pairs of bits
+  ; that differ.  Showing that essentially the same formula (rounded down by
+  ; the floor function) works when N is odd, is left as an exercise to the reader.
+  let max-possible-distance-sum floor (count maze-runners * count maze-runners / 4)
+
+  ; Now, using that number, we can normalize our diversity measure to be
+  ; between 0 (completely homogeneous population) and 1 (maximally heterogeneous)
+  ;report (sum distances) / max-possible-distance-sum
+  report 5
+end
+
+;; The Hamming distance between two bit sequences is the fraction
+;; of positions at which the two sequences have different values.
+;; We use MAP to run down the lists comparing for equality, then
+;; we use LENGTH and REMOVE to count the number of inequalities.
+to-report hamming-distance [bits1 bits2]
+  set bits1 reduce sentence reduce sentence reduce sentence bits1
+  set bits2 reduce sentence reduce sentence reduce sentence bits2
+  report (length remove true (map [ [b1 b2] -> b1 = b2 ] bits1 bits2)) / (8 * Neurons-Hidden-Layer * 4 )    ;|b1-b2|< epsilon2
+end
+
+to-report liste-split
+  report list (sentence (sublist [1 1 1 1 1 1 1 1 1] 0 3)
+                        (sublist [0 0 0 0 0 0 0 0 0] 3 length [0 0 0 0 0 0 0 0 0]))
+              (sentence (sublist [0 0 0 0 0 0 0 0 0] 0 3)
+    (sublist [1 1 1 1 1 1 1 1 1] 3 length [1 1 1 1 1 1 1 1 1]))
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 225
@@ -1740,7 +1883,7 @@ spacing
 spacing
 3
 20
-17.0
+20.0
 1
 1
 NIL
@@ -1779,10 +1922,10 @@ NIL
 HORIZONTAL
 
 BUTTON
-47
-283
-176
-316
+13
+320
+142
+353
 NIL
 navigate
 NIL
@@ -1944,7 +2087,7 @@ max-steps
 max-steps
 0
 2000
-46.0
+600.0
 1
 1
 NIL
@@ -2077,58 +2220,58 @@ population
 population
 0
 100
-5.0
+8.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-990
-428
-1162
-461
+1121
+418
+1293
+451
 crossover-rate
 crossover-rate
 0
 100
-50.0
+88.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-992
-478
-1164
-511
+1123
+468
+1295
+501
 mutation-rate
 mutation-rate
 0
 2
-1.6
+0.0
 0.1
 1
 NIL
 HORIZONTAL
 
 SWITCH
-1016
-536
-1150
-569
+1147
+526
+1281
+559
 plot-diversity?
 plot-diversity?
-0
+1
 1
 -1000
 
 PLOT
-744
-634
-944
-784
+589
+498
+1067
+800
 Diversity Plot
 gen #
 diversity
@@ -2141,6 +2284,94 @@ false
 "" ""
 PENS
 "default" 1.0 0 -16777216 true "" "if plot-diversity? [ plot diversity ]"
+
+BUTTON
+43
+276
+106
+309
+NIL
+go\n
+T
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+0
+
+BUTTON
+147
+232
+210
+265
+NIL
+nav\n
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+86
+360
+204
+393
+NIL
+start-genetique\n
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+SLIDER
+935
+142
+1113
+175
+number-of-generations
+number-of-generations
+0
+10
+5.0
+1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+921
+182
+1122
+227
+numéro de la génération courante
+num-generation
+17
+1
+11
+
+MONITOR
+1011
+362
+1436
+407
+NIL
+liste-split
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
