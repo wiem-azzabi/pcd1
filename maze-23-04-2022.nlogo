@@ -11,20 +11,13 @@ globals
   reward-per-episode
   mean-epoch-error
   total-epoch-error
+  cross-e-error
   episode
   num-generation
   ;;;;;globals of neural network
    data-list    ; List of pairs [Input Output] to train the network
-    ;inputs       ; List with the binary inputs in the training
-    ;outputs      ; List with the binary output in the training
-    ;output-id   ; list of "who" of each output node
-    ;epoch-error  ; error in every epoch during training
-    ;genotype
-  ;linput ;list of weights(input-hidden) after training
-  ;lhidden ;list of weights(hidden-output) after training
-  ;lbias ;list of weights(biais) after training
-  mi ;compteur tebaa input-neurons taa maze runner
-  linki ;compteur tebaa mr-network-links
+   mi ;compteur input-neurons de maze runner
+  linki ;compteur de mr-network-links
 ]
 
 ;; defining breeds
@@ -33,16 +26,16 @@ breed [builders builder]
 breed [maze-runners mr]
 maze-runners-own [prev-node current-node next-node next-path visited-nodes visited-nodes2
                   visited-hubs I-found-exit?
-  ;;;network atributes
+  ;;;network attributes
   ;data-list    ; List of pairs [Input Output] to train the network
     inputs       ; List with the binary inputs in the training
     outputs      ; List with the binary output in the training
     output-id   ; list of "who" of each output node
     epoch-error  ; error in every epoch during training
 
-  linput ;list of weights(input-hidden) after training (kenet li w lezem tkoun list of list)
-  lhidden ;list of weights(hidden-output) after training
-  lbias ;list of weights(biais) after training
+  linput ;list of weights(input-hidden)
+  lhidden ;list of weights(hidden-output)
+  lbias ;list of weights(biais)
   ;;;;
   mr-bias-neurons
   mr-input-neurons ;liste
@@ -50,20 +43,18 @@ maze-runners-own [prev-node current-node next-node next-path visited-nodes visit
   mr-hidden-neurons
   mr-network-links ;;all links of a maze-runner's network
   ;;; new
-  input-links ;list of input-hidden links ( mch les valeurs) (liste simple)
+  input-links ;list of input-hidden links  (liste simple)
   hidden-links ;hidden-output
   bias-links ;bias-hidden + bias-output
-  ;hidden-links2 ;hidden links list of lists
-  ;input-links2 ;input links list of lists
-  ;bias-links2 ;bias links list of lists
+
   oin
   oout
   steps
-
   genotype
   fitness
-  dist-finale ;distance finale %exit
-  nbre-visited-nodes ;nbre visited-nodes finale
+
+  dist-finale ;final distance %exit
+  nbre-visited-nodes ;final nbr visited-nodes
 ]
 
 ;; defining breeds variable
@@ -86,7 +77,7 @@ output-neurons-own [activation grad dropped? ]
 breed [hidden-neurons hidden-neuron]
 hidden-neurons-own [activation grad dropped? ]
 
-;;;v0: links-own [weight] sans breed
+
 directed-link-breed [network-links network-link]
 network-links-own [weight]
 
@@ -951,14 +942,20 @@ to navigate
             if i = 2 [set dir 0]
             if i = 3 [set dir 180]
            set heading dir ] ;;ken reseau aatani direction valide
-
-           [while [dir = -1 ][set dir one-of possible-actions]   ;;ch while dir = -1
+           [while [dir = -1 or abs (dir - heading) = 180 ][set dir one-of possible-actions]   ;;ch while dir = -1
             set heading dir ] ;;ken output yaati output invalide naatihh ena direction
 
+            ;if i = 0 [set dir 270]
+            ;if i = 1 [set dir 90]
+            ;if i = 2 [set dir 0]
+            ;if i = 3 [set dir 180]
+           ;set heading dir
            set next-node nodes-on patch-ahead spacing
-
            ;ask maze-runners [ fd spacing ]
-           fd spacing
+          ;ifelse ([pcolor] of patch-ahead (spacing / 2 ) != 82)
+           ; [fd spacing] []
+          fd spacing
+
            ;color-link-green
            set steps steps + 1
 
@@ -1196,7 +1193,7 @@ to setup-links
   connect mr-bias-neurons mr-output-neurons
 
   ;network-links
-  set mr-network-links sublist sort network-links  ( linki * 82 ) ((linki + 1 ) * 82)
+  set mr-network-links sublist sort network-links  ( linki * (13 * neurons-hidden-layer + 4) ) ((linki + 1 ) * (13 * neurons-hidden-layer + 4))
   set linki linki + 1
 
   set input-links sublist sort mr-network-links 0 (8 * neurons-hidden-layer) ;list of input links (liste simple )
@@ -1341,12 +1338,13 @@ to Back-propagation2
   ;we will first have to compute the total error across
   ;all the output neurons of our neural network and only then can we start with our derivatives and back-propagation.
   ;softmax error:
+  set cross-e-error 0
   let cross-entropy-error 0
   let t 0   ;t= somme( exp( zi )) avec zi = activation de output-neuron i
   (foreach sort mr-output-neurons[ n -> set t t + e ^ [activation ] of n ])
 
   (foreach (sort mr-output-neurons) outputs [
-    [n y] -> set cross-entropy-error cross-entropy-error - (y * ln softmax t [activation] of n ) ] ) ;cross entropy /loss function
+    [n y] -> set cross-entropy-error cross-entropy-error - (y * ln softmax t [activation] of n ) set cross-e-error cross-entropy-error ] ) ;cross entropy /loss function
 
 
   ;;;;;;;;update weights :
@@ -1535,23 +1533,16 @@ to result ;;;zeyda
     set inputs inp
     active-inputs
     Forward-Propagation
-  ;;+ tirer les valeurs de output (index direction) => bch taatina dir
+  ;;+ tirer les valeurs de output (index direction) => dir
 
 end
 
 
 to-report index-direction  ;; indice du noeud output maximal
-  ;let max2 max [activation] of mr-output-neurons
-  ;;mr-output-neurons = liste != agent set
   let maxi 0
   let w 0
-  ;let wval 0
   (foreach mr-output-neurons [ o -> if ( [activation] of o > maxi ) [set maxi [activation] of o set w [who] of o ]])
   let index 0
-  ;let w 0
-  ;let wval 0
-  ;set w [who] of mr-output-neurons with [activation = max2]
-  ;set wval item 0 w ;;12   ;; w lezem tkoun valeur mch liste w ahna ketbin [ who] yaatni liste
   set index position w output-id
   report index
 end
@@ -1593,14 +1584,10 @@ to go
   show("debut gooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo")
   ;if [fitness] of min-one-of maze-runners [fitness] = 0  ;fitness = nbre de 1 dans la liste
    ; [ stop ]
-
   create-next-generation
-
   show("fin gooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo")
 end
-to nav
-  ask maze-runners [navigate]
-end
+
 
 to create-next-generation
   let old-generation maze-runners with [true]     ;;strategie choix bin 3 bch nkhaliwha
@@ -1670,7 +1657,7 @@ to create-next-generation
   show("before dying")
   show([who] of old-generation)
 
-  ask old-generation [ die ]  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;this was deleted by wiem
+  ask old-generation [ die ]
 
 
 
@@ -1743,17 +1730,21 @@ to-report convert [g] ; de genotype g (liste) --> genotype liste triple retourne
 end
 
 to calculate-fitness       ;; turtle procedure
-  ;; min distance %exit puis longeur visitednodes
-
           let xn xcor ;;x du maze runner
           let yn ycor ;; y du maze runner
           let xexit [xcor] of nodes with [reward = 100]
           let yexit  [ycor] of nodes with [reward = 100]
           set xexit item 0 xexit
           set yexit item 0 yexit
+  let xentree [pxcor] of patches with [pentrance = "entrance"]
+  let yentree  [pycor] of patches with [pentrance = "entrance"]
+  set xentree item 0 xentree
+  set yentree item 0 yentree
           set dist-finale sqrt( (xn - xexit) * (xn - xexit)  + (yn - yexit) * (yn - yexit) ) ;distance % exit
+          let dist-totale sqrt( (xexit - xentree) * (xexit - xentree)  + (yexit - yentree) * (yexit - yentree) ) ;distance % exit
+
           set nbre-visited-nodes length visited-nodes2
-          set fitness dist-finale
+          set fitness ( 1 - ( dist-finale / dist-totale ) )
 
 end
 
@@ -1767,21 +1758,20 @@ to mutate   ;; turtle procedure
   set genotype convert g
 end
 
-to start-genetique
+to start-Neat
   clear-all
   setup
   set num-generation 0
   repeat number-of-generations[
-  ask maze-runners [go]
+  ask maze-runners [go] ;;create next generation
   ask maze-runners [ show("generation") show(genotype) ]
   ask maze-runners [
   mutate
   navigate
   calculate-fitness ]
   set num-generation num-generation + 1
-  ]
+  tick]
 
-  tick
 end
 
 ; ===== Diversity Measures
@@ -1798,30 +1788,24 @@ to-report diversity
   ]
   ; The following  formula calculates how much 'disagreement' between genomes
   ; there could possibly be, for the current population size.
-  ; This formula may not be immediately obvious, so here's a sketch of where
-  ; it comes from.  Imagine a population of N turtles, where N is even, and each
-  ; turtle has  only a single bit (0 or 1).  The most diverse this population
-  ; can be is if half the turtles have 0 and half have 1 (you can prove this
-  ; using calculus!). In this case, there are (N / 2) * (N / 2) pairs of bits
-  ; that differ.  Showing that essentially the same formula (rounded down by
-  ; the floor function) works when N is odd, is left as an exercise to the reader.
-  let max-possible-distance-sum floor (count maze-runners * count maze-runners / 4)
 
-  ; Now, using that number, we can normalize our diversity measure to be
-  ; between 0 (completely homogeneous population) and 1 (maximally heterogeneous)
+  let max-possible-distance-sum floor (count maze-runners * count maze-runners / 4)
   ;report (sum distances) / max-possible-distance-sum
-  report 5
+  report (sum distances) / floor (count maze-runners * (count maze-runners - 1 ) / 2)
 end
 
 ;; The Hamming distance between two bit sequences is the fraction
 ;; of positions at which the two sequences have different values.
-;; We use MAP to run down the lists comparing for equality, then
-;; we use LENGTH and REMOVE to count the number of inequalities.
 to-report hamming-distance [bits1 bits2]
   set bits1 reduce sentence reduce sentence reduce sentence bits1
   set bits2 reduce sentence reduce sentence reduce sentence bits2
-  report (length remove true (map [ [b1 b2] -> b1 = b2 ] bits1 bits2)) / (8 * Neurons-Hidden-Layer * 4 )    ;|b1-b2|< epsilon2
+  ;report (length remove true (map [ [b1 b2] -> b1 = b2 ] bits1 bits2)) / (8 * Neurons-Hidden-Layer * 4 )    ;|b1-b2|< epsilon2
+
+  let d 0
+  (foreach bits1 bits2 [ [b1 b2] -> set d abs (b1 - b2 ) / max list b1 b2 ])
+   report d
 end
+
 
 to-report liste-split
   report list (sentence (sublist [1 1 1 1 1 1 1 1 1] 0 3)
@@ -1831,13 +1815,13 @@ to-report liste-split
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-225
-14
-896
-469
+13
+52
+630
+471
 -1
 -1
-2.6414343
+2.43
 1
 8
 1
@@ -1858,10 +1842,10 @@ ticks
 30.0
 
 BUTTON
-116
-12
-194
-53
+974
+534
+1052
+575
 Setup
 setup
 NIL
@@ -1875,25 +1859,25 @@ NIL
 1
 
 SLIDER
-31
-97
-152
-130
+148
+13
+269
+46
 spacing
 spacing
 3
 20
-20.0
+6.0
 1
 1
 NIL
 HORIZONTAL
 
 BUTTON
-13
-10
-91
-51
+1068
+530
+1146
+571
 Reset
 reset-maze-runners
 NIL
@@ -1907,9 +1891,9 @@ NIL
 1
 
 SLIDER
-35
+1496
 509
-156
+1617
 542
 debug
 debug
@@ -1921,37 +1905,20 @@ debug
 NIL
 HORIZONTAL
 
-BUTTON
-13
-320
-142
-353
-NIL
-navigate
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
 TEXTBOX
-43
-69
-193
-87
+23
+20
+173
+38
 maze parameters
 14
 125.0
 1
 
 SLIDER
-38
+1499
 587
-158
+1619
 620
 exploration
 exploration
@@ -1964,9 +1931,9 @@ NIL
 HORIZONTAL
 
 SLIDER
-37
+1498
 633
-157
+1618
 666
 step-size
 step-size
@@ -1978,28 +1945,10 @@ step-size
 NIL
 HORIZONTAL
 
-PLOT
-241
-498
-582
-688
-steps-per-episode
-NIL
-NIL
-0.0
-70.0
--20.0
-10.0
-true
-true
-"" ""
-PENS
-"sum rewards per ep" 1.0 0 -15040220 true "" "plotxy episode steps"
-
 SLIDER
-37
+1498
 663
-157
+1618
 696
 discount
 discount
@@ -2012,45 +1961,45 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-769
-530
-919
-572
+456
+10
+553
+52
                 0\n        270        90\n               180
 11
 105.0
 1
 
 SLIDER
-37
+1498
 695
-157
+1618
 728
 decay
 decay
 0
 1
-0.02
+0.13
 0.01
 1
 NIL
 HORIZONTAL
 
 TEXTBOX
-15
-239
-165
-257
-Algorithms 
+19
+481
+187
+499
+Neural Network Parameters
 14
 125.0
 1
 
 BUTTON
-24
-423
-102
-456
+1535
+336
+1613
+369
 NIL
 add-exit\n
 NIL
@@ -2064,9 +2013,9 @@ NIL
 1
 
 SLIDER
-38
+1499
 548
-158
+1619
 581
 num-episodes
 num-episodes
@@ -2079,28 +2028,28 @@ NIL
 HORIZONTAL
 
 SLIDER
-11
-165
-183
-198
+281
+13
+453
+46
 max-steps
 max-steps
 0
 2000
-600.0
+115.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-1133
-38
-1318
-71
+16
+544
+167
+577
 NEURONS-INPUT-LAYER
 NEURONS-INPUT-LAYER
-0
+8
 8
 8.0
 1
@@ -2109,28 +2058,28 @@ NIL
 HORIZONTAL
 
 SLIDER
-1132
-102
-1306
-135
+15
+504
+167
+537
 Neurons-Hidden-Layer
 Neurons-Hidden-Layer
 0
 10
-6.0
+10.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-1134
-188
-1309
-221
+16
+584
+165
+617
 Neurons-Output-Layer
 Neurons-Output-Layer
-0
+4
 4
 4.0
 1
@@ -2139,14 +2088,14 @@ NIL
 HORIZONTAL
 
 SLIDER
-1135
-147
-1307
-180
+182
+584
+338
+617
 num-samples
 num-samples
-0
-100
+36
+36
 36.0
 1
 1
@@ -2154,10 +2103,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-1147
-269
-1319
-302
+181
+502
+337
+535
 Learning-rate
 Learning-rate
 0
@@ -2169,10 +2118,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-1149
-314
-1321
-347
+182
+544
+337
+577
 dropout-rate
 dropout-rate
 0
@@ -2184,21 +2133,21 @@ NIL
 HORIZONTAL
 
 MONITOR
-931
-265
-1044
-310
-NIL
-mean-epoch-error
+360
+502
+483
+547
+training error
+cross-e-error
 17
 1
 11
 
 BUTTON
-159
-78
-222
-111
+871
+40
+934
+73
 NIL
 quit
 NIL
@@ -2212,40 +2161,40 @@ NIL
 1
 
 SLIDER
-935
-84
-1107
-117
+534
+527
+706
+560
 population
 population
 0
-100
-8.0
+500
+4.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-1121
-418
-1293
-451
+722
+527
+894
+560
 crossover-rate
 crossover-rate
 0
 100
-88.0
+85.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-1123
-468
-1295
-501
+722
+567
+894
+600
 mutation-rate
 mutation-rate
 0
@@ -2257,23 +2206,23 @@ NIL
 HORIZONTAL
 
 SWITCH
-1147
-526
-1281
-559
+990
+372
+1124
+405
 plot-diversity?
 plot-diversity?
-1
+0
 1
 -1000
 
 PLOT
-589
-498
-1067
-800
-Diversity Plot
-gen #
+990
+105
+1297
+370
+Diversity
+generation
 diversity
 0.0
 20.0
@@ -2283,49 +2232,15 @@ true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "if plot-diversity? [ plot diversity ]"
+"default" 1.0 0 -16777216 true "" "if plot-diversity? [ plotxy num-generation diversity ]"
 
 BUTTON
-43
-276
-106
-309
-NIL
-go\n
-T
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-0
-
-BUTTON
-147
-232
-210
-265
-NIL
-nav\n
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-86
-360
-204
-393
-NIL
-start-genetique\n
+724
+40
+860
+73
+START Hyper-Neat
+start-NEAT
 NIL
 1
 T
@@ -2337,41 +2252,89 @@ NIL
 1
 
 SLIDER
-935
-142
-1113
-175
+533
+567
+707
+600
 number-of-generations
 number-of-generations
 0
-10
-5.0
+500
+4.0
 1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-921
-182
-1122
-227
-numéro de la génération courante
+634
+426
+820
+471
+current generation
 num-generation
 17
 1
 11
 
-MONITOR
-1011
-362
-1436
-407
+PLOT
+635
+106
+980
+370
+Fitness
+generation
+raw fitness
+0.0
+5.0
+0.0
+1.0
+true
+true
+"" ""
+PENS
+"worst" 1.0 0 -2674135 true "" "if plot-fitness? [ plotxy num-generation min [fitness] of maze-runners ]"
+"avg" 1.0 0 -13791810 true "" "if plot-fitness? [ plotxy num-generation mean [fitness] of maze-runners ]"
+"best" 1.0 0 -14439633 true "" "if plot-fitness? [ plotxy num-generation max [fitness] of maze-runners ]"
+
+PLOT
+1457
+376
+1617
+496
+steps-per-episode
 NIL
-liste-split
-17
+NIL
+0.0
+70.0
+-20.0
+10.0
+true
+false
+"" ""
+PENS
+"sum rewards per ep" 1.0 0 -16777216 true "" "plotxy episode steps"
+
+TEXTBOX
+541
+500
+685
+518
+Hyper-Neat Parameters
+14
+125.0
 1
-11
+
+SWITCH
+634
+372
+758
+405
+plot-fitness?
+plot-fitness?
+0
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?
